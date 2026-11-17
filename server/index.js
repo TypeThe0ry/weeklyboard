@@ -17,7 +17,7 @@ import { registerSubscriptions } from './subscriptions.js';
 import { registerDebugAuth } from './debug.js';
 import { registerConfirmation } from './confirmation.js';
 import { registerPomodoro } from './pomodoro.js';
-import { plannerContext, weekReviewResponse } from './review.js';
+import { localPlanHints, plannerContext, weekReviewResponse } from './review.js';
 import { reviewNotes } from '../src/review-notes.mjs';
 import { validMoodDate } from '../src/mood-data.mjs';
 import { excludedWeeks, validWeekKey } from '../src/calendar-occurrences.mjs';
@@ -310,12 +310,14 @@ app.delete('/api/workspace/scratch', auth, (req, res) => {
 });
 
 function localPlan(input) {
-  const schedule = deterministicSchedule({ tasks: input.tasks || [], fixed: input.fixed || [], windows: input.windows || {} });
+  const hints = localPlanHints(input.review);
+  const schedule = deterministicSchedule({ tasks: input.tasks || [], fixed: [...(input.fixed || []), ...hints.fixed], windows: input.windows || {}, lastDays: hints.lastDays });
   return {
     summary: schedule.summary || `本地排程完成：${schedule.blocks.filter((block) => block.day).length} 个时间块`,
     tasks: input.tasks || [],
     blocks: schedule.blocks.filter((block) => block.day),
     warnings: ['使用本地排程器；配置 DEEPSEEK_API_KEY 后可切换 AI 规划', ...(schedule.warnings || [])],
+    assumptions: hints.assumptions,
     source: 'local',
   };
 }
@@ -370,7 +372,7 @@ async function deepseekPlan(input) {
           model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
           temperature: 0.2,
           messages: [
-            { role: 'system', content: '你是周计划排程器。若输入含 feedback，请按用户反馈调整上一版草案；若输入含 review：this_week.daily_load 是本周每天已安排的分钟数，避免把任务堆在已超载的日子；last_week 是上周的完成率、计划/实际分钟数与未完成项，完成率低时应减少本周总量并优先安排未完成项；mood_trend 是近 28 天心情记录，low_days 偏多时应留出休息、避免连续长时间块。只返回 JSON：{"summary":string,"blocks":[{"task_id":number|null,"title":string,"day":string,"start_minute":number,"end_minute":number,"category":string}],"warnings":string[],"assumptions":string[]}。如果输入任务带有 task_id，必须原样放回对应时间块；不要编造 task_id。' },
+            { role: 'system', content: '你是周计划排程器。若输入含 feedback，请按用户反馈调整上一版草案；若输入含 review：this_week.busy 是本周看板上已有的日程，新时间块不得与它们重叠；this_week.daily_load 是本周每天已安排的分钟数，避免把任务堆在已超载的日子；last_week 是上周的完成率、计划/实际分钟数与未完成项，完成率低时应减少本周总量并优先安排未完成项；mood_trend 是近 28 天心情记录，low_days 偏多时应留出休息、避免连续长时间块。只返回 JSON：{"summary":string,"blocks":[{"task_id":number|null,"title":string,"day":string,"start_minute":number,"end_minute":number,"category":string}],"warnings":string[],"assumptions":string[]}。如果输入任务带有 task_id，必须原样放回对应时间块；不要编造 task_id。' },
             { role: 'user', content: JSON.stringify(input) },
           ],
         }),

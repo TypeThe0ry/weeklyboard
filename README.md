@@ -31,6 +31,10 @@ npm run dev --prefix server
 API Key 只在服务端读取，前端不会接触供应商密钥。
 账号、项目、任务和排程数据都写入 SQL 数据库；密码只保存为 bcrypt 哈希，前端只保留短期 JWT 会话令牌，不保存明文密码。
 
+## 进度
+
+功能状态、已知问题和待办见 [docs/PROGRESS.md](docs/PROGRESS.md)。
+
 ## 验证
 
 ```bash
@@ -52,7 +56,8 @@ npm run build   # 生产构建到 dist/
 - `GET /api/calendar.ics`
 - `POST /api/calendar/import`
 - `GET/PUT /api/availability`
-- `GET /api/review`
+- `GET /api/review?week_key=&today=` — 按周复盘（完成率、每日负荷、上一周、近 28 天心情）；不带参数时返回全部历史合计
+- `POST /api/calendar/events/restore` — 撤销删除时把整行日程放回去
 - `GET/PUT/DELETE /api/workspace/scratch*` — 收件箱、贴纸与涂色的 SQL 草稿存储（按 `kind + week_key + entity_key` 幂等）
 - `GET /api/backup` / `POST /api/backup/restore` — 带 schema 版本和 SHA-256 的 SQL 备份与事务恢复
 

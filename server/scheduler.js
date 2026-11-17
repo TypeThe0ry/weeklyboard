@@ -1,12 +1,14 @@
 const DAYS = ['周一','周二','周三','周四','周五','周六','周日'];
 
-export function deterministicSchedule({ tasks = [], fixed = [], windows = {} } = {}) {
+// lastDays: days that are already full; they are only used once every other day has been tried.
+export function deterministicSchedule({ tasks = [], fixed = [], windows = {}, lastDays = [] } = {}) {
+  const order = [...DAYS.filter(day => !lastDays.includes(day)), ...DAYS.filter(day => lastDays.includes(day))];
   const occupied = new Map(DAYS.map(day => [day, fixed.filter(x => x.day === day).map(x => [x.start_minute, x.end_minute]) ]));
   const blocks = [];
   const sorted = [...tasks].filter(t => t && t.title).sort((a, b) => (b.priority || 0) - (a.priority || 0) || String(a.due_date || '9999').localeCompare(String(b.due_date || '9999')));
   for (const task of sorted) {
     let remaining = Math.max(15, Number(task.estimate_minutes) || 30);
-    for (const day of DAYS) {
+    for (const day of order) {
       if (!remaining) break;
       const [from, to] = windows[day] || [540, 1080];
       for (let start = from; start + 15 <= to && remaining; start += 15) {

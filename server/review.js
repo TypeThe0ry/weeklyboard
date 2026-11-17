@@ -46,9 +46,11 @@ export function moodContext(db, userId, today) {
 export function plannerContext(db, userId, week, today) {
   if (!validWeekKey(week)) return null;
   const current = weekReview(db, userId, week);
+  const busy = pomodoroWeek(db, userId, week).events.filter((event) => !event.all_day && !event.deadline_kind && event.layer !== 'actual')
+    .map(({ day, start_minute, end_minute }) => ({ day, start_minute, end_minute }));
   const { week_key, completion_rate, planned_minutes, actual_minutes, daily_load, daily_actual, unfinished } = weekReview(db, userId, previousWeekKey(week));
   return {
-    this_week: { daily_load: current.daily_load, planned_minutes: current.planned_minutes },
+    this_week: { daily_load: current.daily_load, planned_minutes: current.planned_minutes, busy },
     last_week: { week_key, completion_rate, planned_minutes, actual_minutes, daily_load, daily_actual, unfinished },
     mood_trend: moodContext(db, userId, today),
   };
@@ -58,4 +60,20 @@ export function weekReviewResponse(db, userId, week, today) {
   const current = weekReview(db, userId, week);
   const context = plannerContext(db, userId, week, today);
   return { ...current, previous: weekReview(db, userId, previousWeekKey(week)), mood_trend: context.mood_trend, notes: reviewNotes(context) };
+}
+
+export const OVERLOAD_MINUTES = 480;
+// How the local scheduler uses the review: never overlap what is already on this week's board,
+// and leave days that are already full until last.
+export function localPlanHints(context) {
+  if (!context) return { fixed: [], lastDays: [], assumptions: [] };
+  const fixed = context.this_week.busy;
+  const lastDays = DAYS.filter((day) => context.this_week.daily_load[day] >= OVERLOAD_MINUTES);
+  return {
+    fixed, lastDays,
+    assumptions: [
+      ...(fixed.length ? [`已避开本周看板上已有的 ${fixed.length} 个日程`] : []),
+      ...(lastDays.length ? [`${lastDays.join('、')} 已排满 8 小时以上，其他天排不下时才会用到`] : []),
+    ],
+  };
 }
