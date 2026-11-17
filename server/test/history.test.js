@@ -40,3 +40,13 @@ test('snapshots and patches', () => {
   assert.equal(snap.repeat, true);
   assert.deepEqual(diffPatch({ a: 1, b: 2 }, { a: 1, b: 3 }), { b: 3 });
 });
+
+test('a command whose target vanished (404) is dropped so older steps stay reachable', async () => {
+  const history = createHistory();
+  const ok = []; 
+  history.push({ label: 'old', undo: async () => ok.push('old'), redo: async () => {} });
+  history.push({ label: 'gone', undo: async () => { throw Object.assign(new Error('missing'), { status: 404 }); }, redo: async () => {} });
+  await assert.rejects(history.undo());
+  assert.equal((await history.undo()).label, 'old');
+  assert.deepEqual(ok, ['old']);
+});

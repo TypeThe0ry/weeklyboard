@@ -13,7 +13,7 @@ export function createHistory(limit = 50) {
     async undo() {
       const command = past[past.length - 1];
       if (!command) return null;
-      await command.undo();
+      try { await command.undo(); } catch (error) { if (error?.status === 404) past.pop(); throw error; }
       past.pop();
       future.push(command);
       return command;
@@ -21,7 +21,7 @@ export function createHistory(limit = 50) {
     async redo() {
       const command = future[future.length - 1];
       if (!command) return null;
-      await command.redo();
+      try { await command.redo(); } catch (error) { if (error?.status === 404) future.pop(); throw error; }
       future.pop();
       past.push(command);
       return command;

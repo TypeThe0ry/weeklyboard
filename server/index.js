@@ -349,7 +349,7 @@ function validatePlan(plan, sourceTasks = []) {
       if (blocks[i].day === blocks[j].day && blocks[i].start_minute < blocks[j].end_minute && blocks[i].end_minute > blocks[j].start_minute) throw new Error('planner returned overlapping blocks');
     }
   }
-  return { summary: text(plan.summary, 2000), tasks: Array.isArray(plan.tasks) ? plan.tasks : [], blocks, warnings: Array.isArray(plan.warnings) ? plan.warnings.map(String).slice(0, 20) : [] };
+  return { summary: text(plan.summary, 2000), tasks: Array.isArray(plan.tasks) ? plan.tasks : [], blocks, warnings: Array.isArray(plan.warnings) ? plan.warnings.map(String).slice(0, 20) : [], assumptions: Array.isArray(plan.assumptions) ? plan.assumptions.map((item) => text(item, 300)).slice(0, 10) : [] };
 }
 
 async function deepseekPlan(input) {
@@ -367,7 +367,7 @@ async function deepseekPlan(input) {
           model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
           temperature: 0.2,
           messages: [
-            { role: 'system', content: '你是周计划排程器。若输入含 feedback，请按用户反馈调整上一版草案；若输入含 review，请参考其中的完成率与每日负荷，避免把任务堆在已超载的日子。只返回 JSON：{"summary":string,"blocks":[{"task_id":number|null,"title":string,"day":string,"start_minute":number,"end_minute":number,"category":string}],"warnings":string[]}。如果输入任务带有 task_id，必须原样放回对应时间块；不要编造 task_id。' },
+            { role: 'system', content: '你是周计划排程器。若输入含 feedback，请按用户反馈调整上一版草案；若输入含 review，请参考其中的完成率与每日负荷，避免把任务堆在已超载的日子。只返回 JSON：{"summary":string,"blocks":[{"task_id":number|null,"title":string,"day":string,"start_minute":number,"end_minute":number,"category":string}],"warnings":string[],"assumptions":string[]}。如果输入任务带有 task_id，必须原样放回对应时间块；不要编造 task_id。' },
             { role: 'user', content: JSON.stringify(input) },
           ],
         }),

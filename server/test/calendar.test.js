@@ -124,3 +124,24 @@ test('ICS export/import keeps ISO week keys and real dates', async () => {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('PATCH excluded_weeks restores a week hidden by a week-scoped delete', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'weeklyboard-exclude-'));
+  const server = await startServer(join(directory, 'calendar.sqlite'));
+  try {
+    const debug = await (await fetch(`${server.base}/auth/debug`)).json();
+    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${debug.token}` };
+    const created = await (await fetch(`${server.base}/calendar/events`, { method: 'POST', headers, body: JSON.stringify({ title: '每周例会', day: '周二', start_minute: 600, end_minute: 660, repeat: true, layer: 'fixed' }) })).json();
+    const hidden = await fetch(`${server.base}/calendar/events/${created.id}?scope=week&week_key=2026-W37`, { method: 'DELETE', headers });
+    assert.equal(hidden.status, 200);
+    assert.deepEqual(JSON.parse((await hidden.json()).event.excluded_weeks), ['2026-W37']);
+    const restored = await (await fetch(`${server.base}/calendar/events/${created.id}`, { method: 'PATCH', headers, body: JSON.stringify({ excluded_weeks: [] }) })).json();
+    assert.deepEqual(JSON.parse(restored.excluded_weeks), []);
+    const invalid = await (await fetch(`${server.base}/calendar/events/${created.id}`, { method: 'PATCH', headers, body: JSON.stringify({ excluded_weeks: ['nope'] }) })).json();
+    assert.deepEqual(JSON.parse(invalid.excluded_weeks), []);
+  } finally {
+    server.child.kill();
+    await server.exited;
+    await rm(directory, { recursive: true, force: true });
+  }
+});

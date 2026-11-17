@@ -75,11 +75,11 @@ User、Workspace、Project、Task、CalendarEvent、PlanRun、PlanBlock、Integr
 - 撤销/重做：覆盖日程的新建、编辑、拖动、缩放、复制、删除（含仅本周删除）、AI 计划确认、课表导入；Ctrl/⌘+Z、Ctrl/⌘+Shift+Z、顶栏按钮，破坏性操作的 toast 带「撤销」。
 - 键盘：Alt+方向键移动日程（↑↓ 10 分钟，←→ 换天）；空白处拖拽直接建日程（在「擦除/选择」模式下）。
 - 图层语义：确认 AI 草案现在写入「预估」图层，实际图层保持独立；新增「把本周预估复制到实际」。
-- AI 规划：显示来源（DeepSeek / 本地）、warnings、assumptions；可写调整意见重新生成；上周完成率与每日负荷作为规划输入。
+- AI 规划：显示来源（DeepSeek / 本地）、warnings、assumptions；可写调整意见重新生成（仅 DeepSeek 生效，本地排程忽略）；当前完成率与每日负荷作为规划输入（`/api/review` 目前不按周过滤，是全部历史的合计，尚非真正的「上周复盘」）。
 - 移动端：≤760px 单日视图 + 日期标签 + 左右滑动；弹出菜单固定在视口内。
 - 顶栏收敛：ICS/CSV 导入导出、复制本周到下一周、打印/PDF 收进「更多」。
 - 网络：同步进度条、离线横幅、非 401 的加载失败不再强制退出登录并可重试。
-- PWA：manifest + Service Worker，离线打开壳并只读缓存 GET 接口（退出登录时清除）。
+- PWA：manifest + Service Worker（仅生产构建注册）。已验证：离线刷新后应用壳和离线横幅正常；GET 接口缓存的离线读取尚未用真实数据验证。
 - 恢复旧版能力：课表 CSV 导入、复制本周到下一周。
 
 ## 仍待办
@@ -87,3 +87,6 @@ User、Workspace、Project、Task、CalendarEvent、PlanRun、PlanBlock、Integr
 - 28 天心情趋势接入规划器；Google/Outlook OAuth；Notion/Todoist 同步。
 - 睡眠/必要事项的专用设置（目前用「固定事项」表达）。
 - 生产部署前确认 `DEBUG_MODE=false`；已发布日历链接可在发布面板撤销。
+
+- 未做：通知、乐观更新与回滚、空状态、侧栏精简；旧版的 A4 PDF 直出（现用浏览器打印）、睡眠设置、删除周看板、模块显示控制、免注册本地模式。
+- 撤销不覆盖：全天日程、ICS 导入日程、截止提醒、订阅日程的删除。

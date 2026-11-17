@@ -1536,9 +1536,9 @@ textarea::placeholder { color:#7B7165; opacity:1; }
 .plan-source { font-weight: 600; }
 .plan-summary textarea { width: 100%; box-sizing: border-box; margin-top: 4px; }
 
-/* Mobile single-day view */
+/* Mobile single-day view (screen only, so printing keeps all seven days) */
 .mobile-day-tabs { display: none; }
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
   .mobile-day-tabs { display: flex; gap: 4px; padding: 6px 8px; position: sticky; top: 0; z-index: 30; background: var(--paper); border-bottom: 1px solid var(--line); overflow-x: auto; }
   .mobile-day-tabs button { flex: 1 0 auto; min-width: 44px; padding: 4px 6px; border: 1px solid var(--line-deep); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; display: flex; flex-direction: column; align-items: center; line-height: 1.2; }
   .mobile-day-tabs button small { color: var(--ink-soft); font-size: 10px; }
