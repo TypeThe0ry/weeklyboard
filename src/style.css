@@ -1507,3 +1507,8 @@ textarea::placeholder { color:#7B7165; opacity:1; }
 @media print{.topbar{position:static}.sidebar{display:none}.timeline-pane{width:100%}.legend{display:none}.timeline-scroll{overflow:visible}.timeline{min-width:0}.event{break-inside:avoid}.cal-view,.modal-mask,.toast{display:none!important}}
 
 
+
+/* Undo / redo */
+.undo-group { display: inline-flex; gap: 2px; }
+.undo-group .icon-btn:disabled { opacity: .35; cursor: default; }
+.toast-action { margin-left: 12px; padding: 0 8px; border: 1px solid currentColor; border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; }

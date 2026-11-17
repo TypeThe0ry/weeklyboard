@@ -150,6 +150,9 @@ export function registerCalendar(app, db, auth) {
       existing.id,
       req.user.id,
     );
+    if (Array.isArray(req.body?.excluded_weeks) && req.body.excluded_weeks.every((week) => isWeekKey(week))) {
+      db.prepare('UPDATE calendar_events SET excluded_weeks=? WHERE id=? AND user_id=?').run(JSON.stringify([...new Set(req.body.excluded_weeks)].sort()), existing.id, req.user.id);
+    }
     res.json(db.prepare('SELECT * FROM calendar_events WHERE id=?').get(existing.id));
   });
   app.delete('/api/calendar/events/:id', auth, (req, res) => {
