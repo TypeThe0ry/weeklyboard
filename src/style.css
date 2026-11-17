@@ -1564,3 +1564,8 @@ textarea::placeholder { color:#7B7165; opacity:1; }
 .review-notes li { padding: 3px 0 3px 10px; border-left: 2px solid var(--line-deep); margin-bottom: 4px; }
 .plan-review-notes { opacity: .85; }
 .plan-review-title { font-weight: 600; }
+
+/* Empty states */
+.empty-hint { margin-top: 8px; }
+.timeline-empty { position: sticky; left: 0; box-sizing: border-box; width: 100%; max-width: 100vw; white-space: normal; margin: 0; padding: 8px 14px; font-size: 12px; line-height: 1.5; color: var(--ink-soft); background: rgba(219,179,85,.12); border-bottom: 1px dashed var(--line-deep); }
+@media print { .timeline-empty { display: none; } }
