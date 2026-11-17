@@ -1569,3 +1569,18 @@ textarea::placeholder { color:#7B7165; opacity:1; }
 .empty-hint { margin-top: 8px; }
 .timeline-empty { position: sticky; left: 0; box-sizing: border-box; width: 100%; max-width: 100vw; white-space: normal; margin: 0; padding: 8px 14px; font-size: 12px; line-height: 1.5; color: var(--ink-soft); background: rgba(219,179,85,.12); border-bottom: 1px dashed var(--line-deep); }
 @media print { .timeline-empty { display: none; } }
+
+/* Slim top bar: everything occasional lives in the 更多 menu */
+.more-popover { max-height: min(78vh, 620px); overflow-y: auto; }
+.more-popover > * { flex-shrink: 0; }
+.more-group { margin: 6px 0 2px; padding: 6px 10px 0; border-top: 1px dashed var(--line-deep); font-size: 11px; color: var(--ink-soft); letter-spacing: .5px; }
+.more-group:first-child { margin-top: 0; border-top: 0; padding-top: 2px; }
+.more-account { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.more-item:disabled { opacity: .5; cursor: default; }
+
+/* Foldable sidebar panels */
+.panel-toggle { all: unset; cursor: pointer; display: inline-flex; align-items: baseline; gap: 4px; }
+.panel-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 2px; }
+.panel-caret { font-size: 11px; color: var(--ink-soft); margin-left: 4px; }
+.panel-collapsed { padding-bottom: 6px; }
+.panel-collapsed .panel-title { margin-bottom: 4px; }

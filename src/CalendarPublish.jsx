@@ -6,7 +6,7 @@ const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/N
 const zones = [...new Set([localZone, 'America/New_York', 'America/Los_Angeles', 'Asia/Shanghai', 'Europe/London', 'UTC'])];
 const defaults = () => ({ title: '我的周看板', timezone: localZone, layers: ['fixed', 'flex', 'once'], include_deadlines: true });
 
-export default function CalendarPublish({ call, api, layers, notify }) {
+export default function CalendarPublish({ call, api, layers, notify, openRef, hideTrigger = false }) {
   const dialog = useRef(null);
   const [saved, setSaved] = useState(null);
   const [draft, setDraft] = useState(defaults);
@@ -40,8 +40,10 @@ export default function CalendarPublish({ call, api, layers, notify }) {
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   };
+  // A menu elsewhere can open the dialog through openRef when the built-in button is hidden.
+  if (openRef) openRef.current = open;
   return <>
-    <button className="paper-btn calendar-publish-trigger" onClick={open}><Link size={15} />订阅链接</button>
+    {!hideTrigger && <button className="paper-btn calendar-publish-trigger" onClick={open}><Link size={15} />订阅链接</button>}
     <dialog ref={dialog} className="modal-card calendar-publish-dialog" aria-labelledby="publish-title">
       <div className="publish-heading"><h3 id="publish-title">导出日历链接</h3><button className="icon-btn" title="关闭" aria-label="关闭导出日历链接" onClick={() => dialog.current.close()}><X size={19} /></button></div>
       <form onSubmit={save}>
