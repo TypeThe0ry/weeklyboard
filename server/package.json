@@ -6,11 +6,16 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "better-sqlite3": "latest",
-    "cors": "latest",
-    "dotenv": "latest",
-    "express": "latest",
-    "jsonwebtoken": "latest",
-    "bcryptjs": "latest"
+    "@touch4it/ical-timezones": "1.9.0",
+    "bcryptjs": "3.0.3",
+    "better-sqlite3": "13.0.3",
+    "cors": "2.8.6",
+    "dotenv": "17.4.2",
+    "express": "5.2.1",
+    "ical-generator": "11.1.2",
+    "ipaddr.js": "2.5.0",
+    "jsonwebtoken": "9.0.3",
+    "node-ical": "0.27.2",
+    "temporal-polyfill": "1.0.5"
   }
 }

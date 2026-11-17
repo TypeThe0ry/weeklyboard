@@ -1,0 +1,9 @@
+{
+  "name": "周看板 Weekly Planner",
+  "short_name": "周看板",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F5F0E8",
+  "theme_color": "#f7f1e7",
+  "icons": [{ "src": "/assets/icon.png", "sizes": "any", "type": "image/png", "purpose": "any" }]
+}

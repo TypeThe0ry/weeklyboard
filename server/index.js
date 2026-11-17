@@ -11,8 +11,16 @@ import jwt from 'jsonwebtoken';
 import { registerAvailability } from './availability.js';
 import { deterministicSchedule } from './scheduler.js';
 import { registerCalendar } from './calendar.js';
+import { registerCalendarMoods } from './calendar-moods.js';
+import { registerCalendarPublish } from './calendar-publish.js';
+import { registerSubscriptions } from './subscriptions.js';
 import { registerDebugAuth } from './debug.js';
 import { registerConfirmation } from './confirmation.js';
+import { registerPomodoro } from './pomodoro.js';
+import { plannerContext, weekReviewResponse } from './review.js';
+import { reviewNotes } from '../src/review-notes.mjs';
+import { validMoodDate } from '../src/mood-data.mjs';
+import { excludedWeeks, validWeekKey } from '../src/calendar-occurrences.mjs';
 
 const serverDir = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: resolve(serverDir, '.env') });
@@ -26,7 +34,7 @@ const secret = process.env.JWT_SECRET || 'dev-secret-change-me';
 const DAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
 app.use(cors());
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '3mb' }));
 db.pragma('foreign_keys = ON');
 
 db.exec(`
@@ -106,6 +114,8 @@ for (const [column, definition] of [
   ['source', "TEXT DEFAULT 'calendar'"],
 ]) ensureColumn('calendar_events', column, definition);
 ensureColumn('workspace_scratch', 'entity_key', "TEXT DEFAULT ''");
+ensureColumn('calendar_events', 'task_id', 'INTEGER');
+ensureColumn('calendar_events', 'excluded_weeks', "TEXT NOT NULL DEFAULT '[]'");
 
 function parsePayload(value) {
   try { return JSON.parse(value || '{}'); } catch { return {}; }
@@ -206,6 +216,10 @@ app.delete('/api/projects/:id', auth, (req, res) => {
   const project = db.prepare('SELECT id FROM projects WHERE id=? AND user_id=?').get(req.params.id, req.user.id);
   if (!project) return res.status(404).json({ error: 'project not found' });
   db.transaction(() => {
+    for (const task of db.prepare('SELECT id FROM tasks WHERE project_id=?').all(project.id)) {
+      db.prepare('UPDATE calendar_events SET task_id=NULL WHERE task_id=? AND user_id=?').run(task.id, req.user.id);
+      db.prepare("DELETE FROM workspace_scratch WHERE user_id=? AND kind='pomodoro-plan' AND entity_key=?").run(req.user.id, `task:${task.id}`);
+    }
     db.prepare('DELETE FROM tasks WHERE project_id=?').run(project.id);
     db.prepare('DELETE FROM projects WHERE id=?').run(project.id);
   })();
@@ -248,7 +262,11 @@ app.patch('/api/tasks/:id', auth, (req, res) => {
 app.delete('/api/tasks/:id', auth, (req, res) => {
   const task = db.prepare('SELECT t.id FROM tasks t JOIN projects p ON p.id=t.project_id WHERE t.id=? AND p.user_id=?').get(req.params.id, req.user.id);
   if (!task) return res.status(404).json({ error: 'task not found' });
-  db.prepare('DELETE FROM tasks WHERE id=?').run(task.id);
+  db.transaction(() => {
+    db.prepare('UPDATE calendar_events SET task_id=NULL WHERE task_id=? AND user_id=?').run(task.id, req.user.id);
+    db.prepare("DELETE FROM workspace_scratch WHERE user_id=? AND kind='pomodoro-plan' AND entity_key=?").run(req.user.id, `task:${task.id}`);
+    db.prepare('DELETE FROM tasks WHERE id=?').run(task.id);
+  })();
   res.status(204).end();
 });
 
@@ -298,6 +316,7 @@ function localPlan(input) {
     tasks: input.tasks || [],
     blocks: schedule.blocks.filter((block) => block.day),
     warnings: ['使用本地排程器；配置 DEEPSEEK_API_KEY 后可切换 AI 规划', ...(schedule.warnings || [])],
+    source: 'local',
   };
 }
 
@@ -308,7 +327,7 @@ function extractJson(raw) {
   return JSON.parse(start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned);
 }
 
-function validatePlan(plan) {
+function validatePlan(plan, sourceTasks = []) {
   if (!plan || typeof plan !== 'object' || !Array.isArray(plan.blocks)) throw new Error('planner returned invalid blocks');
   const blocks = plan.blocks.map((block) => {
     if (!block || typeof block.title !== 'string' || !DAYS.includes(block.day) ||
@@ -316,8 +335,11 @@ function validatePlan(plan) {
         block.start_minute < 0 || block.end_minute > 1440 || block.start_minute >= block.end_minute) {
       throw new Error('planner returned invalid time block');
     }
+    const taskById = sourceTasks.find((task) => Number.isInteger(Number(block.task_id)) && Number(task.task_id ?? task.id) === Number(block.task_id));
+    const taskByTitle = sourceTasks.find((task) => String(task.title || '').trim() === block.title.trim());
+    const sourceTask = taskById || taskByTitle;
     return {
-      task_id: block.task_id ?? null,
+      task_id: sourceTask ? Number(sourceTask.task_id ?? sourceTask.id) : null,
       title: text(block.title, 200),
       day: block.day,
       start_minute: block.start_minute,
@@ -330,7 +352,7 @@ function validatePlan(plan) {
       if (blocks[i].day === blocks[j].day && blocks[i].start_minute < blocks[j].end_minute && blocks[i].end_minute > blocks[j].start_minute) throw new Error('planner returned overlapping blocks');
     }
   }
-  return { summary: text(plan.summary, 2000), tasks: Array.isArray(plan.tasks) ? plan.tasks : [], blocks, warnings: Array.isArray(plan.warnings) ? plan.warnings.map(String).slice(0, 20) : [] };
+  return { summary: text(plan.summary, 2000), tasks: Array.isArray(plan.tasks) ? plan.tasks : [], blocks, warnings: Array.isArray(plan.warnings) ? plan.warnings.map(String).slice(0, 20) : [], assumptions: Array.isArray(plan.assumptions) ? plan.assumptions.map((item) => text(item, 300)).slice(0, 10) : [] };
 }
 
 async function deepseekPlan(input) {
@@ -348,14 +370,14 @@ async function deepseekPlan(input) {
           model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
           temperature: 0.2,
           messages: [
-            { role: 'system', content: '你是周计划排程器。只返回 JSON：{"summary":string,"blocks":[{"title":string,"day":string,"start_minute":number,"end_minute":number,"category":string}],"warnings":string[]}' },
+            { role: 'system', content: '你是周计划排程器。若输入含 feedback，请按用户反馈调整上一版草案；若输入含 review：this_week.daily_load 是本周每天已安排的分钟数，避免把任务堆在已超载的日子；last_week 是上周的完成率、计划/实际分钟数与未完成项，完成率低时应减少本周总量并优先安排未完成项；mood_trend 是近 28 天心情记录，low_days 偏多时应留出休息、避免连续长时间块。只返回 JSON：{"summary":string,"blocks":[{"task_id":number|null,"title":string,"day":string,"start_minute":number,"end_minute":number,"category":string}],"warnings":string[],"assumptions":string[]}。如果输入任务带有 task_id，必须原样放回对应时间块；不要编造 task_id。' },
             { role: 'user', content: JSON.stringify(input) },
           ],
         }),
       });
       if (!response.ok) throw new Error(`DeepSeek ${response.status}`);
       const body = await response.json();
-      return validatePlan(extractJson(body.choices?.[0]?.message?.content || '{}'));
+      return { ...validatePlan(extractJson(body.choices?.[0]?.message?.content || '{}'), input.tasks || []), source: 'deepseek' };
     } catch (error) {
       lastError = error;
       if (attempt === 0) await new Promise((resolveDelay) => setTimeout(resolveDelay, 250));
@@ -384,23 +406,37 @@ app.post('/api/plan/deterministic', auth, (req, res) => {
 });
 
 app.post('/api/plan/preview', auth, async (req, res) => {
+  // The review is rebuilt from stored data; whatever the client sent under `review` is ignored.
+  const { review: _ignored, today, ...body } = req.body || {};
+  const review = plannerContext(db, req.user.id, body.week_key, today);
+  const input = review ? { ...body, review } : body;
+  const review_notes = reviewNotes(review);
   try {
-    res.json(await deepseekPlan(req.body || {}));
+    res.json({ ...await deepseekPlan(input), review_notes });
   } catch (error) {
-    const fallback = localPlan(req.body || {});
-    res.json({ ...fallback, fallback: true, warnings: [...fallback.warnings, `DeepSeek 暂不可用：${error.message}`] });
+    const fallback = localPlan(input);
+    res.json({ ...fallback, fallback: true, warnings: [...fallback.warnings, `DeepSeek 暂不可用：${error.message}`], review_notes });
   }
 });
 
 registerConfirmation(app, db, auth);
+registerSubscriptions(app, db, auth);
 registerCalendar(app, db, auth);
+registerCalendarMoods(app, db, auth);
+registerPomodoro(app, db, auth);
 app.get('/api/calendar', auth, (req, res) => {
   res.json(db.prepare('SELECT * FROM calendar_events WHERE user_id=? ORDER BY day,start_minute').all(req.user.id));
 });
 
 app.get('/api/review', auth, (req, res) => {
+  const { week_key: week, today } = req.query;
+  if (week !== undefined) {
+    if (!validWeekKey(week) || (today !== undefined && !validMoodDate(today))) return res.status(400).json({ error: 'invalid week_key or today' });
+    return res.json(weekReviewResponse(db, req.user.id, week, today));
+  }
+  // No week: all-time totals, kept for older clients.
   const tasks = db.prepare('SELECT t.status,t.estimate_minutes FROM tasks t JOIN projects p ON p.id=t.project_id WHERE p.user_id=?').all(req.user.id);
-  const events = db.prepare('SELECT day,start_minute,end_minute,title FROM calendar_events WHERE user_id=?').all(req.user.id);
+  const events = db.prepare('SELECT day,start_minute,end_minute,title FROM calendar_events WHERE user_id=? AND all_day=0').all(req.user.id);
   const planned = events.reduce((total, event) => total + event.end_minute - event.start_minute, 0);
   const done = tasks.filter((task) => task.status === 'done').length;
   const dailyLoad = Object.fromEntries(DAYS.map((day) => [day, events.filter((event) => event.day === day).reduce((total, event) => total + event.end_minute - event.start_minute, 0)]));
@@ -443,9 +479,11 @@ app.post('/api/backup/restore', auth, (req, res) => {
   if (!tables || !Array.isArray(tables.projects) || !Array.isArray(tables.tasks) || !Array.isArray(tables.calendar_events)) return res.status(400).json({ error: 'invalid backup' });
   if (!verifyBackup(backup)) return res.status(400).json({ error: 'backup checksum mismatch' });
   const restore = db.transaction(() => {
+    db.prepare('UPDATE calendar_publications SET enabled=0 WHERE user_id=?').run(req.user.id);
     db.prepare('DELETE FROM tasks WHERE project_id IN (SELECT id FROM projects WHERE user_id=?)').run(req.user.id);
     db.prepare('DELETE FROM projects WHERE user_id=?').run(req.user.id);
     db.prepare('DELETE FROM calendar_events WHERE user_id=?').run(req.user.id);
+    db.prepare('DELETE FROM calendar_subscriptions WHERE user_id=?').run(req.user.id);
     db.prepare('DELETE FROM availability WHERE user_id=?').run(req.user.id);
     db.prepare('DELETE FROM workspace_scratch WHERE user_id=?').run(req.user.id);
     db.prepare('DELETE FROM plan_runs WHERE user_id=?').run(req.user.id);
@@ -453,8 +491,11 @@ app.post('/api/backup/restore', auth, (req, res) => {
     for (const project of tables.projects) insertProject.run(project.id, req.user.id, text(project.title, 120), text(project.description, 2000), project.deadline || null, Number(project.priority) || 3, project.created_at || nowIso(), project.updated_at || nowIso());
     const insertTask = db.prepare('INSERT INTO tasks(id,project_id,title,estimate_minutes,due_date,priority,status) VALUES(?,?,?,?,?,?,?)');
     for (const task of tables.tasks) insertTask.run(task.id, task.project_id, text(task.title, 160), Number(task.estimate_minutes) || 30, task.due_date || null, Number(task.priority) || 3, ['todo', 'doing', 'done'].includes(task.status) ? task.status : 'todo');
-    const insertEvent = db.prepare('INSERT INTO calendar_events(id,user_id,title,day,start_minute,end_minute,locked,category,description,layer,week_key,repeat_rule,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)');
-    for (const event of tables.calendar_events) insertEvent.run(event.id, req.user.id, text(event.title, 200), event.day, Number(event.start_minute), Number(event.end_minute), event.locked ? 1 : 0, text(event.category || 'other', 32), text(event.description, 2000), text(event.layer || 'actual', 32), event.week_key || null, event.repeat_rule || null, text(event.source || 'calendar', 32));
+    const insertEvent = db.prepare('INSERT INTO calendar_events(id,user_id,title,day,start_minute,end_minute,locked,category,description,layer,week_key,repeat_rule,source,task_id,all_day,external_key,external_date,deadline_kind,deadline_kind_override,due_minute,event_url,course,deadline_completed) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+    const restoredTaskIds = new Set(tables.tasks.map((task) => task.id));
+    for (const event of tables.calendar_events) insertEvent.run(event.id, req.user.id, text(event.title, event.deadline_kind ? 500 : 200), event.day, Number(event.start_minute), Number(event.end_minute), !event.subscription_id && event.locked ? 1 : 0, text(event.category || 'other', 32), text(event.description, event.deadline_kind ? 20000 : 2000), text(event.layer || 'actual', 32), event.week_key || null, event.repeat_rule || null, text(event.subscription_id ? 'calendar' : event.source || 'calendar', 32), restoredTaskIds.has(event.task_id) ? event.task_id : null, event.all_day ? 1 : 0, event.source === 'ics-import' ? event.external_key || null : null, event.external_date || null, ['hw', 'exam'].includes(event.deadline_kind) ? event.deadline_kind : null, ['hw', 'exam'].includes(event.deadline_kind_override) ? event.deadline_kind_override : null, Number.isInteger(event.due_minute) && event.due_minute >= 0 && event.due_minute < 1440 ? event.due_minute : null, text(event.event_url, 4096), text(event.course, 300), event.deadline_completed ? 1 : 0);
+    const restoreExclusions = db.prepare('UPDATE calendar_events SET excluded_weeks=? WHERE id=? AND user_id=?');
+    for (const event of tables.calendar_events) restoreExclusions.run(JSON.stringify(excludedWeeks(event)), event.id, req.user.id);
     const insertAvailability = db.prepare('INSERT INTO availability(user_id,day,start_minute,end_minute,kind,title) VALUES(?,?,?,?,?,?)');
     for (const row of tables.availability || []) insertAvailability.run(req.user.id, row.day, Number(row.start_minute), Number(row.end_minute), row.kind, text(row.title, 120));
     const insertScratch = db.prepare('INSERT INTO workspace_scratch(id,user_id,kind,week_key,entity_key,payload_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)');
@@ -475,6 +516,7 @@ app.post('/api/backup/restore', auth, (req, res) => {
 });
 
 registerAvailability(app, db, auth);
+registerCalendarPublish(app, db, auth, secret);
 registerDebugAuth(app, db, issueToken);
 
 app.use((error, req, res, next) => {

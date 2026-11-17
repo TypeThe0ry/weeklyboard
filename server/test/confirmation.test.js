@@ -56,6 +56,7 @@ test('confirmation persists atomically and handles retries and invalid drafts', 
     assert.deepEqual(savedBlocks.map((block) => block.week_key), ['2026-W37', '2026-W37']);
     assert.deepEqual(savedBlocks.map((block) => block.category), ['study', 'work']);
     assert.deepEqual(savedBlocks.map((block) => block.description), ['deep work', 'follow-up']);
+    assert.deepEqual(savedBlocks.map((block) => block.layer), ['flex', 'flex']);
     const conflict = await request('/plan/confirm', { ...draft, request_key: randomUUID() });
     assert.equal(conflict.status, 409);
     const nextWeek = await request('/plan/confirm', { ...draft, request_key: randomUUID(), week_key: '2026-W38' });
