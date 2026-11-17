@@ -122,6 +122,7 @@ test('review API is per week, and the planner receives last week plus the mood t
     assert.equal(upstreamInput.review.last_week.completion_rate, 0.67, 'server-built review replaces the client value');
     assert.equal(upstreamInput.review.last_week.unfinished[0].title, '写作');
     assert.equal(upstreamInput.review.this_week.daily_load.周三, 120);
+    assert.deepEqual(upstreamInput.review.this_week.busy, [{ day: '周三', start_minute: 480, end_minute: 540 }, { day: '周三', start_minute: 540, end_minute: 600 }]);
     assert.equal(upstreamInput.review.mood_trend.low_days, 2);
     assert.ok(preview.review_notes.includes('上周未完成：写作'));
 
@@ -160,6 +161,16 @@ test('the local planner also reports review notes', async () => {
     assert.equal(preview.source, 'local');
     assert.ok(preview.review_notes.some((note) => /上周完成率 0%/.test(note)));
     assert.ok(preview.review_notes.includes('上周未完成：背单词'));
+    assert.equal(preview.assumptions.length, 0, 'nothing on this week yet');
+
+    // This week already has a Monday morning block and a full Tuesday: the draft avoids both.
+    await post('/calendar/events', { title: '晨会', day: '周一', start_minute: 540, end_minute: 1080, layer: 'flex', week_key: '2026-W47' }, token);
+    await post('/calendar/events', { title: '实验', day: '周二', start_minute: 480, end_minute: 1020, layer: 'fixed', week_key: null, repeat: true }, token);
+    const busy = await post('/plan/preview', { tasks: [{ id: 1, title: '背单词', estimate_minutes: 60 }], week_key: '2026-W47' }, token);
+    assert.equal(busy.blocks.length, 1);
+    assert.equal(busy.blocks[0].day, '周三', 'Monday is occupied and Tuesday is full');
+    assert.ok(busy.assumptions.some((note) => /已避开本周看板上已有的 2 个日程/.test(note)));
+    assert.ok(busy.assumptions.some((note) => /周一、周二 已排满/.test(note)));
   } finally {
     child.kill();
     await exited;

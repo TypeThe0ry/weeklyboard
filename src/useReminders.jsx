@@ -3,12 +3,17 @@ import { dueReminders, reminderText } from './reminders.mjs';
 
 const KEY = 'wb-reminders';
 const readEnabled = () => { try { return localStorage.getItem(KEY) === 'on'; } catch { return false; } };
+// Announced reminders are remembered for the browser session so a reload does not repeat them.
+const SENT_KEY = 'wb-reminders-sent';
+const readSent = () => { try { const list = JSON.parse(sessionStorage.getItem(SENT_KEY) || '[]'); return new Set(Array.isArray(list) ? list : []); } catch { return new Set(); } };
+const saveSent = (sent) => { try { sessionStorage.setItem(SENT_KEY, JSON.stringify([...sent].slice(-200))); } catch { /* Worst case a reminder repeats after a reload. */ } };
 const systemAllowed = () => typeof Notification !== 'undefined' && Notification.permission === 'granted';
 
 // Reminders only fire while the board is open in a tab: there is no push server behind them.
 export default function useReminders({ events, weekKeyOf, days, notify }) {
   const [enabled, setEnabled] = useState(readEnabled);
-  const sent = useRef(new Set());
+  const sent = useRef(null);
+  if (!sent.current) sent.current = readSent();
   const latest = useRef({ events, notify });
   latest.current = { events, notify };
 
@@ -22,6 +27,7 @@ export default function useReminders({ events, weekKeyOf, days, notify }) {
       if (systemAllowed()) { try { new Notification(title, { body, tag: item.key, icon: '/assets/icon.png' }); shown = true; } catch { /* Some mobile browsers only allow notifications from a service worker. */ } }
       if (!shown || document.visibilityState === 'visible') latest.current.notify(`⏰ ${title}（${body}）`);
     }
+    if (due.length) saveSent(sent.current);
   }, [weekKeyOf, days]);
 
   useEffect(() => {

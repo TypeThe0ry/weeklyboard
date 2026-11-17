@@ -1584,3 +1584,8 @@ textarea::placeholder { color:#7B7165; opacity:1; }
 .panel-caret { font-size: 11px; color: var(--ink-soft); margin-left: 4px; }
 .panel-collapsed { padding-bottom: 6px; }
 .panel-collapsed .panel-title { margin-bottom: 4px; }
+
+/* Phones hide the long week label; show a short one so the viewed week is never a guess. */
+.week-label-short { display: none; }
+@media (max-width: 760px) { .week-label-short { display: block; flex-basis: 100%; text-align: right; font-size: 11px; line-height: 1.2; color: var(--ink-soft); white-space: nowrap; } .weeknav { flex-wrap: wrap; justify-content: flex-end; row-gap: 0; max-width: 170px; } }
+@media print { .week-label-short { display: none !important; } }
