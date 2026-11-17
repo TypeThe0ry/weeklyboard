@@ -52,7 +52,7 @@ function ResizeHandle({ event, range, interval, pixelsPerMinute, onPreview, onEn
 
 export default function CalendarEvent({ event, height, columns, style, layerLabel, range, interval, pixelsPerMinute, onOpen, onMove, onCopy, onPreview, onResizePreview, onResizeEnd }) {
   const gesture = useEventGesture();
-  return <article className={`event ${columns > 1 ? 'event-split' : ''} ${height < 44 ? 'event-compact' : ''} ${height < 18 ? 'event-short' : ''}`}
+  return <article ref={gesture.touchRef} className={`event ${columns > 1 ? 'event-split' : ''} ${height < 44 ? 'event-compact' : ''} ${height < 18 ? 'event-short' : ''}`}
     data-event-id={event.id} data-layer={event.layer} role="button" tabIndex={0}
     title={`${event.title} · ${layerLabel} · ${formatTime(event.start_minute)}–${formatTime(event.end_minute)}`}
     aria-label={`${event.title}，${formatTime(event.start_minute)} 至 ${formatTime(event.end_minute)}`} style={style}

@@ -1,4 +1,7 @@
-.event { touch-action: none; }
+/* Touch: the browser keeps panning; a press-and-hold (see useEventGesture) starts the drag instead. */
+.event { touch-action: pan-x pan-y; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.event .event-resize { touch-action: none; }
+@media (pointer: coarse) { .event:not(.event-short) .event-resize { opacity: 1; width: 36px; height: 12px; } .event:not(.event-short) .event-resize::after { width: 26px; margin-top: 6px; } }
 .event-title, .event-time, .event-layer-label, .event-desc { pointer-events: none; }
 .event .event-resize { left: 50%; right: auto; bottom: 0; width: 22px; height: 6px; max-height: 35%; transform: translateX(-50%); opacity: 0; }
 .event .event-resize::after { width: 18px; height: 2px; margin: 2px auto 0; }

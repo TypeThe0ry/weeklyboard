@@ -1,12 +1,26 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { copyTarget } from './event-copy.mjs';
 import { gridPixelsPerMinute } from './timeline-zoom.mjs';
+import { LONG_PRESS_MS, touchMoveIntent } from './touch-press.mjs';
+
+// While a touch drag is live the browser must not scroll. That only works through a non-passive
+// touchmove listener that already exists when the finger lands, so every event element keeps one.
+let touchDragActive = false;
+let touchDragEndedAt = 0;
+const blockTouchScroll = (e) => { if (touchDragActive && e.cancelable) e.preventDefault(); };
+export const touchDragRecently = () => touchDragActive || Date.now() - touchDragEndedAt < 400;
 
 const formatTime = (minute) => `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
 
 export default function useEventGesture() {
   const cleanup = useRef(null);
   const suppressClickUntil = useRef(0);
+  const touchNode = useRef(null);
+  const touchRef = useCallback((node) => {
+    touchNode.current?.removeEventListener('touchmove', blockTouchScroll);
+    touchNode.current = node;
+    node?.addEventListener('touchmove', blockTouchScroll, { passive: false });
+  }, []);
   useEffect(() => () => cleanup.current?.(), []);
 
   const start = (down, { event, mode, range, pixelsPerMinute, onPreview, onCommit }) => {
@@ -22,7 +36,10 @@ export default function useEventGesture() {
     const originRect = origin.getBoundingClientRect();
     const offset = (down.clientY - originRect.top) / gridPixelsPerMinute(originRect, range, pixelsPerMinute) - (Number(event.start_minute) - range.start);
     const initial = { x: down.clientX, y: down.clientY };
+    const touch = down.pointerType === 'touch';
     let point = initial, moved = false, target = null, frame, ghost = null, previewKey = '';
+    // Mouse and pen drag at once; touch waits for a press-and-hold.
+    let armed = !touch, held = false, pressTimer = null;
 
     const findTarget = () => {
       const viewport = board.getBoundingClientRect();
@@ -60,7 +77,7 @@ export default function useEventGesture() {
         onPreview?.(target ? { ...target, title: event.title, mode, eventId: event.id } : null);
       }
       if (ghost) {
-        ghost.style.transform = `translate3d(${Math.max(0, Math.min(window.innerWidth - ghost.offsetWidth - 4, point.x + 14))}px,${Math.max(0, Math.min(window.innerHeight - ghost.offsetHeight - 4, point.y + 14))}px,0)`;
+        ghost.style.transform = `translate3d(${Math.max(0, Math.min(window.innerWidth - ghost.offsetWidth - 4, touch ? point.x - ghost.offsetWidth / 2 : point.x + 14))}px,${Math.max(0, Math.min(window.innerHeight - ghost.offsetHeight - 4, touch ? point.y - ghost.offsetHeight - 28 : point.y + 14))}px,0)`;
         ghost.style.opacity = target ? '0.95' : '0.6';
         ghost.lastChild.textContent = target ? `${target.day} ${formatTime(target.start_minute)} – ${formatTime(target.end_minute)}` : '移到时间表内';
       }
@@ -82,11 +99,19 @@ export default function useEventGesture() {
     const move = (e) => {
       if (e.pointerId !== down.pointerId) return;
       point = { x: e.clientX, y: e.clientY };
+      if (touch) {
+        const intent = touchMoveIntent({ armed, start: initial, point });
+        if (intent === 'scroll') return cancel();
+        if (intent === 'wait') return;
+      }
       moved ||= Math.hypot(point.x - initial.x, point.y - initial.y) >= 5;
       if (moved) { showGhost(); preview(); }
     };
+    const menu = (e) => e.preventDefault();
     const clear = () => {
       cancelAnimationFrame(frame);
+      clearTimeout(pressTimer);
+      if (touch) { handle.removeEventListener('contextmenu', menu); if (touchDragActive) { touchDragActive = false; touchDragEndedAt = Date.now(); } }
       handle.removeEventListener('pointermove', move);
       handle.removeEventListener('pointerup', up);
       handle.removeEventListener('pointercancel', cancel);
@@ -97,7 +122,7 @@ export default function useEventGesture() {
       article.classList.remove('event-moving', 'event-copy-source');
       document.body.classList.remove('event-gesturing');
       onPreview?.(null);
-      if (moved) suppressClickUntil.current = Date.now() + 250;
+      if (moved || held) suppressClickUntil.current = Date.now() + 250;
       cleanup.current = null;
     };
     const cancel = () => clear();
@@ -109,6 +134,14 @@ export default function useEventGesture() {
       clear();
       if (moved && changed) onCommit(event, target);
     };
+    if (touch) {
+      handle.addEventListener('contextmenu', menu);
+      pressTimer = setTimeout(() => {
+        armed = true; held = true; moved = true; touchDragActive = true;
+        navigator.vibrate?.(12);
+        showGhost(); preview();
+      }, LONG_PRESS_MS);
+    }
     handle.setPointerCapture(down.pointerId);
     handle.addEventListener('pointermove', move);
     handle.addEventListener('pointerup', up);
@@ -118,5 +151,5 @@ export default function useEventGesture() {
     cleanup.current = clear;
     frame = requestAnimationFrame(tick);
   };
-  return { start, shouldIgnoreClick: () => Date.now() < suppressClickUntil.current };
+  return { start, touchRef, shouldIgnoreClick: () => Date.now() < suppressClickUntil.current };
 }
