@@ -123,6 +123,30 @@ export function registerCalendar(app, db, auth) {
     );
     res.status(201).json(db.prepare('SELECT * FROM calendar_events WHERE id=?').get(result.lastInsertRowid));
   });
+  // Undo for a deleted event: put back a row the client was given earlier, including the fields
+  // the plain create route does not take (all-day, ICS identity, deadline data, skipped weeks).
+  app.post('/api/calendar/events/restore', auth, (req, res) => {
+    const row = req.body || {};
+    const clip = (value, max) => String(value ?? '').slice(0, max);
+    const kind = (value) => ['hw', 'exam'].includes(value) ? value : null;
+    if (row.subscription_id) return res.status(409).json({ error: '订阅日程由来源日历管理，不能恢复' });
+    if (!DAYS.has(row.day) || typeof row.title !== 'string' || !row.title.trim() || !Number.isInteger(row.start_minute) || !Number.isInteger(row.end_minute) || row.start_minute < 0 || row.end_minute > 1440 || row.start_minute >= row.end_minute || !isWeekKey(row.week_key ?? null)) return res.status(400).json({ error: 'invalid calendar event' });
+    const deadline = kind(row.deadline_kind);
+    const imported = row.source === 'ics-import';
+    const result = db.prepare(`INSERT INTO calendar_events(
+      user_id,title,day,start_minute,end_minute,locked,category,description,layer,week_key,repeat_rule,source,task_id,
+      all_day,external_key,external_date,deadline_kind,deadline_kind_override,due_minute,event_url,course,deadline_completed,excluded_weeks
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      req.user.id, clip(row.title.trim(), deadline ? 500 : 200), row.day, row.start_minute, row.end_minute, row.locked ? 1 : 0,
+      clip(row.category || 'other', 32), clip(row.description, deadline ? 20000 : 2000), clip(row.layer || 'actual', 32),
+      normalizeWeekKey(row.week_key), row.repeat_rule === 'weekly' ? 'weekly' : null, clip(row.source || 'calendar', 32),
+      Number.isInteger(row.task_id) && validTask(req.user.id, row.task_id) ? row.task_id : null,
+      row.all_day ? 1 : 0, imported ? row.external_key || null : null, imported ? row.external_date || null : null,
+      deadline, kind(row.deadline_kind_override), Number.isInteger(row.due_minute) && row.due_minute >= 0 && row.due_minute < 1440 ? row.due_minute : null,
+      clip(row.event_url, 4096), clip(row.course, 300), row.deadline_completed ? 1 : 0, JSON.stringify(excludedWeeks(row)),
+    );
+    res.status(201).json(db.prepare('SELECT * FROM calendar_events WHERE id=?').get(result.lastInsertRowid));
+  });
   app.patch('/api/calendar/events/:id', auth, (req, res) => {
     const existing = db.prepare('SELECT * FROM calendar_events WHERE id=? AND user_id=?').get(req.params.id, req.user.id);
     if (!existing) return res.status(404).json({ error: 'calendar event not found' });

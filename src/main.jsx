@@ -176,6 +176,14 @@ function App() {
     setEvents((items) => [...items.filter((item) => item.id !== created.id), created]);
     return created;
   };
+  // Brings back a deleted row with every field it had (all-day, imported, deadline events).
+  const restoreEventRow = async (row, replacedId) => {
+    const created = await call('/calendar/events/restore', { method: 'POST', body: JSON.stringify(row) });
+    if (replacedId != null && replacedId !== created.id) idAlias.current.set(replacedId, created.id);
+    setEvents((items) => [...items.filter((item) => item.id !== created.id), created]);
+    if (created.deadline_kind) setDeadlines(await call('/calendar/deadlines'));
+    return created;
+  };
   const removeEventById = async (id) => { const realId = resolveId(id); try { await call(`/calendar/events/${realId}?scope=all`, { method: 'DELETE' }); } catch (error) { if (error.status !== 404) throw error; } setEvents((items) => items.filter((item) => item.id !== realId)); };
   const undo = async () => { try { const command = await history.current.undo(); notify(command ? `已撤销：${command.label}` : '没有可撤销的操作'); } catch (error) { notify(`撤销失败：${error.message}`); } setHistoryTick((value) => value + 1); };
   const redo = async () => { try { const command = await history.current.redo(); notify(command ? `已重做：${command.label}` : '没有可重做的操作'); } catch (error) { notify(`重做失败：${error.message}`); } setHistoryTick((value) => value + 1); };
@@ -521,8 +529,11 @@ function App() {
       } else if (original && !original.all_day && !original.external_key && !original.deadline_kind) {
         const snap = eventSnapshot(original); const excluded = parseExcluded(original.excluded_weeks);
         record({ label: '删除日程', undo: () => createEventFrom(snap, resolveId(lid), excluded), redo: () => removeEventById(lid) });
+      } else if (original) {
+        const row = { ...original };
+        record({ label: '删除日程', undo: () => restoreEventRow(row, resolveId(lid)), redo: () => removeEventById(lid) });
       }
-      notify(scope === 'week' ? '已删除本周日程' : '日程已删除', original && (result.event || (!original.all_day && !original.external_key && !original.deadline_kind)) ? undoAction : null);
+      notify(scope === 'week' ? '已删除本周日程' : '日程已删除', original ? undoAction : null);
     } catch (error) { notify(`删除失败：${error.message}`); }
   };
   const recordCreated = (created, label) => {
@@ -629,7 +640,15 @@ function App() {
   const removeNight = async (item) => removeScratchItem('night', item, setNightNotes);
   const removeDeadline = async (item) => {
     if (!item.event_id) return removeScratchItem('deadline', item, setDeadlines);
-    try { await call(`/calendar/events/${item.event_id}`, { method: 'DELETE' }); await refresh(); }
+    const lid = item.event_id; const original = events.find((row) => row.id === lid);
+    try {
+      await call(`/calendar/events/${lid}`, { method: 'DELETE' }); await refresh();
+      if (original) {
+        const row = { ...original };
+        record({ label: '删除截止提醒', undo: () => restoreEventRow(row, resolveId(lid)), redo: async () => { await removeEventById(lid); setDeadlines(await call('/calendar/deadlines')); } });
+        notify('截止提醒已删除', undoAction);
+      }
+    }
     catch (error) { notify(error.message); }
   };
   const updateDeadline = async (item, patch) => {
