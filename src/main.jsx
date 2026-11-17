@@ -5,6 +5,7 @@ import { usePomodoro, PomodoroPanel, PomodoroSwitch, PomodoroBreakdown } from '.
 import CalendarPublish from './CalendarPublish.jsx';
 import { EventCopyPreview } from './EventCopy.jsx';
 import ReviewCard from './ReviewCard.jsx';
+import { isLocalId, optimisticDelete } from './optimistic.mjs';
 import useReminders from './useReminders.jsx';
 import { touchDragRecently } from './useEventGesture.jsx';
 import { localDateKey } from './mood-data.mjs';
@@ -499,10 +500,23 @@ function App() {
         if (original) { const lid = localEvent.id; const beforeSnap = eventSnapshot(original); const afterSnap = eventSnapshot(response); record({ label: '编辑日程', undo: () => patchEventById(lid, beforeSnap), redo: () => patchEventById(lid, afterSnap) }); }
         notify('日程已更新并写入 SQL', original ? undoAction : null);
       } else {
-        const response = await call('/calendar/events', { method: 'POST', body: JSON.stringify(localEvent) });
-        setEvents((items) => [...items, response]);
-        recordCreated(response, '新建日程');
-        notify('日程已写入 SQL', undoAction);
+        // Show the block straight away; it is swapped for the saved row, or removed and the form
+        // reopened with what was typed if saving fails.
+        const tempId = uid('local');
+        const draftModal = eventModal;
+        setEvents((items) => [...items, { ...localEvent, id: tempId, layer: localEvent.layer || activeLayer, source: 'calendar' }]);
+        setEventModal(null);
+        try {
+          const response = await call('/calendar/events', { method: 'POST', body: JSON.stringify(localEvent) });
+          setEvents((items) => items.map((item) => item.id === tempId ? response : item));
+          recordCreated(response, '新建日程');
+          notify('日程已写入 SQL', undoAction);
+        } catch (error) {
+          setEvents((items) => items.filter((item) => item.id !== tempId));
+          setEventModal(draftModal);
+          notify(`保存失败，已保留你填的内容：${error.message}`);
+        }
+        return;
       }
       setEventModal(null);
     } catch (error) {
@@ -521,7 +535,20 @@ function App() {
       const query = scope === 'week' ? `?scope=week&week_key=${encodeURIComponent(currentWeekKey)}` : '?scope=all';
       const lid = eventModal.id;
       const original = events.find((item) => item.id === lid);
-      const result = await call(`/calendar/events/${lid}${query}`, { method: 'DELETE' });
+      if (isLocalId(lid)) return notify('正在保存，稍后再删除');
+      // Hide the block first; if the server refuses, put it back and reopen the editor.
+      const draft = eventModal;
+      if (original) {
+        const guess = optimisticDelete(original, scope, currentWeekKey);
+        setEvents((items) => guess ? items.map((item) => item.id === lid ? guess : item) : items.filter((item) => item.id !== lid));
+        setEventModal(null);
+      }
+      let result;
+      try { result = await call(`/calendar/events/${lid}${query}`, { method: 'DELETE' }); }
+      catch (error) {
+        if (original) { setEvents((items) => items.some((item) => item.id === lid) ? items.map((item) => item.id === lid ? original : item) : [...items, original]); setEventModal(draft); }
+        throw error;
+      }
       setEvents((items) => result.event ? items.map((item) => item.id === lid ? result.event : item) : items.filter((item) => item.id !== lid));
       setEventModal(null);
       if (original && result.event) {
@@ -558,6 +585,7 @@ function App() {
   };
   const moveEvent = (source, target) => {
     if (source.locked) return;
+    if (isLocalId(source.id)) return notify('正在保存，稍后再调整');
     if (String(source.id).startsWith('plan-')) {
       updatePlanDraft(source.id, target);
       notify('草案位置已调整');
