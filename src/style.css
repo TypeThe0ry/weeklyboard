@@ -770,13 +770,13 @@ textarea::placeholder { color:#7B7165; opacity:1; }
   background:#F8E9E2;
   color:#8A3D26;
 }
-.deadline-list li button:hover { background:#F1D4C8; border-color:#C85E3D; }
+.deadline-list li button:hover { background:#F1D4C8; border-color:var(--terra); }
 
 /* ---------- Deadline Sticker（截止警示贴纸） ---------- */
 .tape-red::before { background:var(--terra); }
 .dl-sticker {
   background:linear-gradient(180deg, #F8E9E2 0%, #F4DFD6 100%);
-  border:1.8px dashed #C85E3D;
+  border:1.8px dashed var(--terra);
   transform:rotate(.5deg);
 }
 .dl-sticker:hover { transform:rotate(.5deg) scale(1.015); }
@@ -785,7 +785,7 @@ textarea::placeholder { color:#7B7165; opacity:1; }
   background:rgba(255,255,255,.55);
   border:1.5px solid #DDB4A4; border-radius:8px; outline:none; color:var(--ink);
 }
-.dl-sticker .night-fields select:focus { border-color:#C85E3D; background:#fff; }
+.dl-sticker .night-fields select:focus { border-color:var(--terra); background:#fff; }
 /* 日期栏上的截止徽标 */
 .day-head .dl-badges { display:inline-flex; flex-wrap:wrap; justify-content:center; gap:3px; margin-left:2px; max-width:100%; }
 .dl-badge {
@@ -803,7 +803,7 @@ textarea::placeholder { color:#7B7165; opacity:1; }
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 /* 被贴上警示的课程卡：右上角警示贴纸 */
-.event.has-deadline { box-shadow:2px 2px 0 rgba(200,94,61,.35); border-color:#C85E3D; }
+.event.has-deadline { box-shadow:2px 2px 0 rgba(200,94,61,.35); border-color:var(--terra); }
 .event.has-deadline::after {
   content:'⚠️'; position:absolute; top:1px; right:3px;
   font-size:15px; line-height:1;
@@ -1512,3 +1512,44 @@ textarea::placeholder { color:#7B7165; opacity:1; }
 .undo-group { display: inline-flex; gap: 2px; }
 .undo-group .icon-btn:disabled { opacity: .35; cursor: default; }
 .toast-action { margin-left: 12px; padding: 0 8px; border: 1px solid currentColor; border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+
+/* Network state */
+.net-bar { position: fixed; z-index: 90; inset: 0 0 auto 0; height: 3px; background: linear-gradient(90deg, transparent, var(--blue), transparent); background-size: 40% 100%; background-repeat: no-repeat; animation: net-slide 1s linear infinite; }
+@keyframes net-slide { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+.net-banner { position: sticky; top: 0; z-index: 80; padding: 6px 14px; background: var(--terra-fill); color: var(--terra); border-bottom: 1px solid var(--terra); text-align: center; font-size: 13px; }
+@media (prefers-reduced-motion: reduce) { .net-bar { animation: none; background: var(--blue); } }
+
+/* More menu */
+.more-wrap { position: relative; }
+.more-popover { display: flex; flex-direction: column; gap: 2px; min-width: 190px; padding: 6px; }
+.more-item { display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.more-item:hover, .more-item:focus-visible { background: var(--yellow-fill); outline: none; }
+
+/* Drag-to-create preview */
+.create-preview { position: absolute; z-index: 4; left: 3px; right: 3px; border: 2px dashed var(--blue); border-radius: 4px; background: rgba(61,118,149,.14); pointer-events: none; }
+.create-preview span { position: absolute; top: 2px; left: 4px; font-size: 11px; color: var(--blue); }
+
+/* Plan summary */
+.plan-summary { margin: 8px 0; padding: 8px; border: 1px dashed var(--line-deep); border-radius: 6px; font-size: 12px; line-height: 1.5; }
+.plan-summary ul { margin: 4px 0; padding-left: 0; list-style: none; }
+.plan-warnings { color: var(--terra); }
+.plan-source { font-weight: 600; }
+.plan-summary textarea { width: 100%; box-sizing: border-box; margin-top: 4px; }
+
+/* Mobile single-day view */
+.mobile-day-tabs { display: none; }
+@media (max-width: 760px) {
+  .mobile-day-tabs { display: flex; gap: 4px; padding: 6px 8px; position: sticky; top: 0; z-index: 30; background: var(--paper); border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .mobile-day-tabs button { flex: 1 0 auto; min-width: 44px; padding: 4px 6px; border: 1px solid var(--line-deep); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; display: flex; flex-direction: column; align-items: center; line-height: 1.2; }
+  .mobile-day-tabs button small { color: var(--ink-soft); font-size: 10px; }
+  .mobile-day-tabs button.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .mobile-day-tabs button.active small { color: #fff; }
+  .timeline[data-focus-day] .day-col:not(.focus-day) { display: none; }
+  .timeline[data-focus-day] { min-width: 0 !important; width: 100% !important; }
+  .timeline[data-focus-day] .day-col.focus-day { flex: 1 1 auto; min-width: 0; width: auto; }
+  .timeline-scroll { overflow-x: hidden; }
+}
+@media (max-width: 760px) {
+  /* Popovers inside the scrolling action strip would be clipped; pin them to the viewport instead. */
+  .top-actions .layer-popover { position: fixed; top: 100px; left: 14px; right: 14px; width: auto; max-height: 70vh; overflow-y: auto; z-index: 100; }
+}

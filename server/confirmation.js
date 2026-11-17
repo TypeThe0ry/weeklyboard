@@ -76,7 +76,7 @@ export function registerConfirmation(app, db, auth) {
       0,
       block.category,
       block.description,
-      'actual',
+      'flex',
       weekKey,
       null,
       'plan',

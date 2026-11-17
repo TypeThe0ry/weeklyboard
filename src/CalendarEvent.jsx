@@ -4,6 +4,7 @@ import useEventGesture from './useEventGesture.jsx';
 import { gridPixelsPerMinute } from './timeline-zoom.mjs';
 import './event-gesture.css';
 
+const WEEK_DAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 const formatTime = (minute) => `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
 
 function ResizeHandle({ event, range, interval, pixelsPerMinute, onPreview, onEnd, onOpen }) {
@@ -56,7 +57,20 @@ export default function CalendarEvent({ event, height, columns, style, layerLabe
     title={`${event.title} · ${layerLabel} · ${formatTime(event.start_minute)}–${formatTime(event.end_minute)}`}
     aria-label={`${event.title}，${formatTime(event.start_minute)} 至 ${formatTime(event.end_minute)}`} style={style}
     onClick={(e) => { e.stopPropagation(); if (!gesture.shouldIgnoreClick()) onOpen(event); }}
-    onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(event); } }}
+    onKeyDown={(e) => {
+      if (e.target !== e.currentTarget) return;
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(event); return; }
+      if (e.altKey && e.key.startsWith('Arrow') && !event.locked) {
+        // Alt+↑/↓ shifts by one grid step, Alt+←/→ moves to the neighbouring day.
+        e.preventDefault(); e.stopPropagation();
+        const duration = Number(event.end_minute) - Number(event.start_minute);
+        const dayIndex = WEEK_DAYS.indexOf(event.day);
+        const nextDay = e.key === 'ArrowLeft' ? WEEK_DAYS[Math.max(0, dayIndex - 1)] : e.key === 'ArrowRight' ? WEEK_DAYS[Math.min(6, dayIndex + 1)] : event.day;
+        const delta = e.key === 'ArrowUp' ? -interval : e.key === 'ArrowDown' ? interval : 0;
+        const start = Math.max(range.start, Math.min(range.end - duration, Number(event.start_minute) + delta));
+        if (nextDay !== event.day || start !== Number(event.start_minute)) { onMove?.(event, { day: nextDay, start_minute: start, end_minute: start + duration }); window.requestAnimationFrame(() => document.querySelector(`[data-event-id="${event.id}"]`)?.focus()); }
+      }
+    }}
     onPointerDown={(down) => {
       if (event.locked || down.target.closest('.event-copy-handle, .event-resize')) return;
       gesture.start(down, { event, mode: 'move', range, pixelsPerMinute, onPreview, onCommit: onMove });

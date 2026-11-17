@@ -313,6 +313,7 @@ function localPlan(input) {
     tasks: input.tasks || [],
     blocks: schedule.blocks.filter((block) => block.day),
     warnings: ['使用本地排程器；配置 DEEPSEEK_API_KEY 后可切换 AI 规划', ...(schedule.warnings || [])],
+    source: 'local',
   };
 }
 
@@ -366,14 +367,14 @@ async function deepseekPlan(input) {
           model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
           temperature: 0.2,
           messages: [
-            { role: 'system', content: '你是周计划排程器。只返回 JSON：{"summary":string,"blocks":[{"task_id":number|null,"title":string,"day":string,"start_minute":number,"end_minute":number,"category":string}],"warnings":string[]}。如果输入任务带有 task_id，必须原样放回对应时间块；不要编造 task_id。' },
+            { role: 'system', content: '你是周计划排程器。若输入含 feedback，请按用户反馈调整上一版草案；若输入含 review，请参考其中的完成率与每日负荷，避免把任务堆在已超载的日子。只返回 JSON：{"summary":string,"blocks":[{"task_id":number|null,"title":string,"day":string,"start_minute":number,"end_minute":number,"category":string}],"warnings":string[]}。如果输入任务带有 task_id，必须原样放回对应时间块；不要编造 task_id。' },
             { role: 'user', content: JSON.stringify(input) },
           ],
         }),
       });
       if (!response.ok) throw new Error(`DeepSeek ${response.status}`);
       const body = await response.json();
-      return validatePlan(extractJson(body.choices?.[0]?.message?.content || '{}'), input.tasks || []);
+      return { ...validatePlan(extractJson(body.choices?.[0]?.message?.content || '{}'), input.tasks || []), source: 'deepseek' };
     } catch (error) {
       lastError = error;
       if (attempt === 0) await new Promise((resolveDelay) => setTimeout(resolveDelay, 250));
