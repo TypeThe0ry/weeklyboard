@@ -65,9 +65,19 @@ export function summarizePomodoros(tasks, events, targets = {}) {
   return { rows, daily, total: { plan_units: plan, actual_units: units(actual), actual_minutes: actual, pending_units: rows.reduce((sum, row) => sum + row.pending_units, 0), percent: plan ? Math.round(actual / (plan * 30) * 100) : 0 } };
 }
 
+const loadTasks = (db, userId) => db.prepare('SELECT t.*,p.title AS project_title FROM tasks t JOIN projects p ON p.id=t.project_id WHERE p.user_id=? ORDER BY p.id,t.id').all(userId);
+const loadEvents = (db, userId, week) => db.prepare("SELECT * FROM calendar_events WHERE user_id=? AND (week_key=? OR week_key IS NULL OR (repeat_rule='weekly' AND layer<>'actual')) ORDER BY day,start_minute,id").all(userId, week).filter((event) => occursInWeek(event, week));
+
+// One week's plan-versus-actual numbers. The weekly review reads the same summary so both screens agree.
+export function pomodoroWeek(db, userId, week) {
+  const targets = Object.fromEntries(db.prepare("SELECT entity_key,payload_json FROM workspace_scratch WHERE user_id=? AND kind='pomodoro-plan' AND week_key=?").all(userId, week).map((row) => [row.entity_key, json(row.payload_json).units]));
+  const events = loadEvents(db, userId, week);
+  return { ...summarizePomodoros(loadTasks(db, userId), events, targets), events };
+}
+
 export function registerPomodoro(app, db, auth) {
-  const getTasks = (userId) => db.prepare('SELECT t.*,p.title AS project_title FROM tasks t JOIN projects p ON p.id=t.project_id WHERE p.user_id=? ORDER BY p.id,t.id').all(userId);
-  const getEvents = (userId, week) => db.prepare("SELECT * FROM calendar_events WHERE user_id=? AND (week_key=? OR week_key IS NULL OR (repeat_rule='weekly' AND layer<>'actual')) ORDER BY day,start_minute,id").all(userId, week).filter((event) => occursInWeek(event, week));
+  const getTasks = (userId) => loadTasks(db, userId);
+  const getEvents = (userId, week) => loadEvents(db, userId, week);
   const setScratch = (userId, kind, week, key, payload) => {
     const now = new Date().toISOString();
     db.prepare(`INSERT INTO workspace_scratch(user_id,kind,week_key,entity_key,payload_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)

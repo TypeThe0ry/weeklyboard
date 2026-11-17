@@ -17,7 +17,10 @@ import { registerSubscriptions } from './subscriptions.js';
 import { registerDebugAuth } from './debug.js';
 import { registerConfirmation } from './confirmation.js';
 import { registerPomodoro } from './pomodoro.js';
-import { excludedWeeks } from '../src/calendar-occurrences.mjs';
+import { plannerContext, weekReviewResponse } from './review.js';
+import { reviewNotes } from '../src/review-notes.mjs';
+import { validMoodDate } from '../src/mood-data.mjs';
+import { excludedWeeks, validWeekKey } from '../src/calendar-occurrences.mjs';
 
 const serverDir = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: resolve(serverDir, '.env') });
@@ -367,7 +370,7 @@ async function deepseekPlan(input) {
           model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
           temperature: 0.2,
           messages: [
-            { role: 'system', content: '你是周计划排程器。若输入含 feedback，请按用户反馈调整上一版草案；若输入含 review，请参考其中的完成率与每日负荷，避免把任务堆在已超载的日子。只返回 JSON：{"summary":string,"blocks":[{"task_id":number|null,"title":string,"day":string,"start_minute":number,"end_minute":number,"category":string}],"warnings":string[],"assumptions":string[]}。如果输入任务带有 task_id，必须原样放回对应时间块；不要编造 task_id。' },
+            { role: 'system', content: '你是周计划排程器。若输入含 feedback，请按用户反馈调整上一版草案；若输入含 review：this_week.daily_load 是本周每天已安排的分钟数，避免把任务堆在已超载的日子；last_week 是上周的完成率、计划/实际分钟数与未完成项，完成率低时应减少本周总量并优先安排未完成项；mood_trend 是近 28 天心情记录，low_days 偏多时应留出休息、避免连续长时间块。只返回 JSON：{"summary":string,"blocks":[{"task_id":number|null,"title":string,"day":string,"start_minute":number,"end_minute":number,"category":string}],"warnings":string[],"assumptions":string[]}。如果输入任务带有 task_id，必须原样放回对应时间块；不要编造 task_id。' },
             { role: 'user', content: JSON.stringify(input) },
           ],
         }),
@@ -403,11 +406,16 @@ app.post('/api/plan/deterministic', auth, (req, res) => {
 });
 
 app.post('/api/plan/preview', auth, async (req, res) => {
+  // The review is rebuilt from stored data; whatever the client sent under `review` is ignored.
+  const { review: _ignored, today, ...body } = req.body || {};
+  const review = plannerContext(db, req.user.id, body.week_key, today);
+  const input = review ? { ...body, review } : body;
+  const review_notes = reviewNotes(review);
   try {
-    res.json(await deepseekPlan(req.body || {}));
+    res.json({ ...await deepseekPlan(input), review_notes });
   } catch (error) {
-    const fallback = localPlan(req.body || {});
-    res.json({ ...fallback, fallback: true, warnings: [...fallback.warnings, `DeepSeek 暂不可用：${error.message}`] });
+    const fallback = localPlan(input);
+    res.json({ ...fallback, fallback: true, warnings: [...fallback.warnings, `DeepSeek 暂不可用：${error.message}`], review_notes });
   }
 });
 
@@ -421,6 +429,12 @@ app.get('/api/calendar', auth, (req, res) => {
 });
 
 app.get('/api/review', auth, (req, res) => {
+  const { week_key: week, today } = req.query;
+  if (week !== undefined) {
+    if (!validWeekKey(week) || (today !== undefined && !validMoodDate(today))) return res.status(400).json({ error: 'invalid week_key or today' });
+    return res.json(weekReviewResponse(db, req.user.id, week, today));
+  }
+  // No week: all-time totals, kept for older clients.
   const tasks = db.prepare('SELECT t.status,t.estimate_minutes FROM tasks t JOIN projects p ON p.id=t.project_id WHERE p.user_id=?').all(req.user.id);
   const events = db.prepare('SELECT day,start_minute,end_minute,title FROM calendar_events WHERE user_id=? AND all_day=0').all(req.user.id);
   const planned = events.reduce((total, event) => total + event.end_minute - event.start_minute, 0);

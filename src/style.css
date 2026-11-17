@@ -1553,3 +1553,14 @@ textarea::placeholder { color:#7B7165; opacity:1; }
   /* Popovers inside the scrolling action strip would be clipped; pin them to the viewport instead. */
   .top-actions .layer-popover { position: fixed; top: 100px; left: 14px; right: 14px; width: auto; max-height: 70vh; overflow-y: auto; z-index: 100; }
 }
+
+/* Weekly review card */
+.review-rows { margin: 0; display: grid; gap: 6px; font-size: 12px; }
+.review-rows > div { display: grid; grid-template-columns: 34px 1fr; gap: 6px; align-items: baseline; }
+.review-rows dt { color: var(--ink-soft, inherit); opacity: .75; }
+.review-rows dd { margin: 0; display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; line-height: 1.5; }
+.review-rows strong { font-size: 16px; }
+.review-notes, .plan-review-notes { margin: 8px 0 0; padding: 0; list-style: none; font-size: 12px; line-height: 1.5; }
+.review-notes li { padding: 3px 0 3px 10px; border-left: 2px solid var(--line-deep); margin-bottom: 4px; }
+.plan-review-notes { opacity: .85; }
+.plan-review-title { font-weight: 600; }
